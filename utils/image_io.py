@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 from config import BLACK_BORDER_THRESHOLD, MAX_IMAGE_SIZE
+from config_manager import get_config
 
 
 def read_images_from_folder(folder_path: str) -> List[np.ndarray]:
@@ -105,7 +106,8 @@ def save_panorama(img: np.ndarray, output_path: str) -> bool:
         
         _, ext = os.path.splitext(output_path)
         if ext.lower() in ('.jpg', '.jpeg'):
-            cv2.imwrite(output_path, img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            quality = get_config("jpeg_quality", 95)
+            cv2.imwrite(output_path, img, [cv2.IMWRITE_JPEG_QUALITY, quality])
         else:
             cv2.imwrite(output_path, img)
         

@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+from config_manager import get_config
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMG_DIR = os.path.join(BASE_DIR, "images")
@@ -175,11 +176,19 @@ def run_stitching_pipeline(img1, img2, src_pts, dst_pts, blend_mode="linear"):
     h2, w2 = img2.shape[:2]
     print(f"[A Engine] Image1: {w1}x{h1}, Image2: {w2}x{h2}, Mode: {blend_mode}")
 
-    H_1to2, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 3.0)
+    ransac_thresh = get_config("ransac_thresh", 5.0)
+    # 使用 estimateAffinePartial2D 锁死透视自由度，防止扇形累积拉伸
+    H_affine, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=ransac_thresh)
+    if H_affine is None:
+        raise ValueError("计算几何矩阵失败，可能是重叠区域不合理！")
+        
     inlier_count = int(np.sum(mask))
-    print(f"[A Engine] Homography inliers: {inlier_count}/{len(src_pts)}")
+    print(f"[A Engine] Affine inliers: {inlier_count}/{len(src_pts)}")
     if inlier_count < 10:
-        raise ValueError(f"配准内点数量过少 ({inlier_count})，计算单应矩阵可能存在错误！")
+        raise ValueError(f"配准内点数量过少 ({inlier_count})，计算对齐矩阵可能存在错误！")
+
+    # 升维回 3x3 矩阵，物理锁死第三行 [0, 0, 1]，彻底干掉透视畸变分量
+    H_1to2 = np.vstack([H_affine, [0.0, 0.0, 1.0]])
 
     H_2to1 = np.linalg.inv(H_1to2)
     print("[A Engine] Computing canvas size...")
@@ -205,6 +214,19 @@ def run_stitching_pipeline(img1, img2, src_pts, dst_pts, blend_mode="linear"):
     src_mask2 = np.full(img2.shape[:2], 255, dtype=np.uint8)
     warped_mask1 = cv2.warpPerspective(src_mask1, H1_final, (canvas_w, canvas_h), borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     warped_mask2 = cv2.warpPerspective(src_mask2, H2_final, (canvas_w, canvas_h), borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+    print("[A Engine] 正在计算动态规划最佳缝合线(DpSeamFinder)以规避视差重影...")
+    try:
+        seam_finder = cv2.detail_DpSeamFinder("COLOR")
+        # 转换至 float32 并计算最优接缝，这会原地修改传进去的 masks
+        imgs_for_seam = [warped1.astype(np.float32), warped2.astype(np.float32)]
+        corners = [(0, 0), (0, 0)]
+        masks_for_seam = [warped_mask1.copy(), warped_mask2.copy()]
+        seam_finder.find(imgs_for_seam, corners, masks_for_seam)
+        warped_mask1 = masks_for_seam[0]
+        warped_mask2 = masks_for_seam[1]
+    except Exception as e:
+        print(f"[A Engine] 计算接缝失败，回退至基础交叉融合: {e}")
 
     print(f"[A Engine] Blending images using {blend_mode}...")
     if blend_mode == "multiband":

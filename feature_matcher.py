@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from config_manager import get_config
 
 def load_and_preprocess(image_path):
     """读取图片并预处理"""
@@ -28,8 +29,9 @@ def match_images_from_memory(img1: np.ndarray, img2: np.ndarray):
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.equalizeHist(gray2)
     
-    # 2. 提取ORB特征
-    extractor = ORBFeatureExtractor(n_features=1500)
+    # 2. 提取ORB特征 (从全局配置读取动态参数)
+    n_features = get_config("orb_features", 1500)
+    extractor = ORBFeatureExtractor(n_features=n_features)
     kp1, des1 = extractor.detect_and_compute(gray1)
     kp2, des2 = extractor.detect_and_compute(gray2)
     

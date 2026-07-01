@@ -1,269 +1,215 @@
-from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
-    QMetaObject, QObject, QPoint, QRect,
-    QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
-    QFont, QFontDatabase, QGradient, QIcon,
-    QImage, QKeySequence, QLinearGradient, QPainter,
-    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtCore import QSize, Qt, QMetaObject
+from PySide6.QtGui import QFont, QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel,
     QListWidget, QMainWindow, QProgressBar, QPushButton,
-    QSizePolicy, QSplitter, QTextEdit, QVBoxLayout,
-    QWidget, QFrame)
+    QSplitter, QTextEdit, QVBoxLayout, QWidget, QFrame, QTabWidget, QSlider, QTableWidget, QHeaderView)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1100, 750)
-        MainWindow.setMinimumSize(QSize(900, 600))
+        MainWindow.resize(1300, 850)
+        MainWindow.setMinimumSize(QSize(1000, 650))
         
-        # 现代暗系/浅系精致配色 QSS 样式表
         MainWindow.setStyleSheet(u"""
-            QMainWindow {
-                background-color: #f5f6fa;
-            }
-            QWidget {
-                font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-                font-size: 13px;
-                color: #2f3640;
-            }
-            QFrame#left_panel {
-                background-color: #ffffff;
-                border-radius: 8px;
-                border: 1px solid #dcdde1;
-            }
-            QPushButton {
-                background-color: #353b48;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #718093;
-            }
-            QPushButton:pressed {
-                background-color: #2f3640;
-            }
-            QPushButton#btn_start {
-                background-color: #44bd32;
-            }
-            QPushButton#btn_start:hover {
-                background-color: #4cd137;
-            }
-            QPushButton#btn_start:pressed {
-                background-color: #44bd32;
-            }
-            QPushButton#btn_clear {
-                background-color: #e84118;
-            }
-            QPushButton#btn_clear:hover {
-                background-color: #c23616;
-            }
-            QPushButton#btn_clear:pressed {
-                background-color: #e84118;
-            }
-            QPushButton#btn_smart_probe {
-                background-color: #6c5ce7;
-                font-size: 14px;
-                padding: 10px 15px;
-            }
-            QPushButton#btn_smart_probe:hover {
-                background-color: #8278fc;
-            }
-            QPushButton#btn_smart_probe:pressed {
-                background-color: #574b90;
-            }
-            QPushButton#btn_linear {
-                background-color: #487eb0;
-            }
-            QPushButton#btn_linear:hover {
-                background-color: #54a0ff;
-            }
-            QPushButton#btn_linear:pressed {
-                background-color: #273c75;
-            }
-            QPushButton#btn_multiband {
-                background-color: #e1b12c;
-            }
-            QPushButton#btn_multiband:hover {
-                background-color: #fbc531;
-            }
-            QPushButton#btn_multiband:pressed {
-                background-color: #b8860b;
-            }
-            QComboBox {
-                border: 1px solid #dcdde1;
-                border-radius: 4px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QListWidget {
-                border: 1px solid #dcdde1;
-                border-radius: 4px;
-                background-color: #f8f9fa;
-            }
-            QTextEdit {
-                border: 1px solid #dcdde1;
-                border-radius: 4px;
-                background-color: #2f3542;
-                color: #f1f2f6;
-                font-family: "Consolas", monospace;
-                font-size: 12px;
-            }
-            QProgressBar {
-                border: 1px solid #dcdde1;
-                border-radius: 4px;
-                text-align: center;
-                background-color: #f8f9fa;
-            }
-            QProgressBar::chunk {
-                background-color: #00a8ff;
-                border-radius: 4px;
-            }
-            QLabel#label_preview_title {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2f3640;
-            }
+            QMainWindow { background-color: #f5f6fa; }
+            QWidget { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px; color: #2f3640; }
+            QFrame#left_panel, QFrame#right_panel { background-color: #ffffff; border-radius: 8px; border: 1px solid #dcdde1; }
+            QPushButton { background-color: #353b48; color: white; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; }
+            QPushButton:hover { background-color: #718093; }
+            QPushButton:pressed { background-color: #2f3640; }
+            QPushButton#btn_start { background-color: #44bd32; }
+            QPushButton#btn_start:hover { background-color: #4cd137; }
+            QPushButton#btn_clear, QPushButton#btn_clear_history { background-color: #e84118; }
+            QPushButton#btn_clear:hover, QPushButton#btn_clear_history:hover { background-color: #c23616; }
+            QPushButton#btn_smart_probe { background-color: #6c5ce7; font-size: 14px; padding: 10px 15px; }
+            QPushButton#btn_smart_probe:hover { background-color: #8278fc; }
+            QComboBox { border: 1px solid #dcdde1; border-radius: 4px; padding: 5px 10px; background-color: white; }
+            QComboBox::drop-down { border: none; }
+            QListWidget { border: 1px solid #dcdde1; border-radius: 4px; background-color: #f8f9fa; }
+            QTextEdit { border: 1px solid #dcdde1; border-radius: 4px; background-color: #2f3542; color: #f1f2f6; font-family: "Consolas", monospace; font-size: 12px; }
+            QProgressBar { border: 1px solid #dcdde1; border-radius: 4px; text-align: center; background-color: #f8f9fa; }
+            QProgressBar::chunk { background-color: #00a8ff; border-radius: 4px; }
+            QTabWidget::pane { border: 1px solid #dcdde1; border-radius: 4px; background: white; }
+            QTabBar::tab { background: #f5f6fa; border: 1px solid #dcdde1; border-bottom: none; padding: 8px 15px; margin-right: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+            QTabBar::tab:selected { background: white; font-weight: bold; border-top: 2px solid #6c5ce7; }
+            QTableWidget { background-color: white; color: #2f3640; gridline-color: #dcdde1; border: 1px solid #dcdde1; border-radius: 4px; }
+            QHeaderView::section { background-color: #f5f6fa; color: #2f3640; padding: 6px; border: 1px solid #dcdde1; font-weight: bold; }
         """)
         
         self.centralwidget = QWidget(MainWindow)
-        self.centralwidget.setObjectName(u"centralwidget")
         
-        # 整体水平布局
-        self.main_layout = QHBoxLayout(self.centralwidget)
-        self.main_layout.setSpacing(15)
-        self.main_layout.setObjectName(u"main_layout")
+        self.main_layout = QVBoxLayout(self.centralwidget)
+        self.main_layout.setSpacing(10)
         self.main_layout.setContentsMargins(15, 15, 15, 15)
         
-        # 使用 QSplitter 实现可拖动分割
-        self.splitter = QSplitter(Qt.Horizontal, self.centralwidget)
-        self.splitter.setObjectName(u"splitter")
+        # === Top Header Bar ===
+        self.header_layout = QHBoxLayout()
+        self.label_title = QLabel(u"🔗 多图无缝全景拼接系统")
+        self.label_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
         
-        # ----------------- 左侧控制面板 -----------------
-        self.left_panel = QFrame(self.splitter)
+        self.label_stats = QLabel(u"统计: 已拼接 0 次 | 成功率 0% | 平均耗时 0.0s")
+        self.label_stats.setStyleSheet("font-size: 14px; color: #7f8c8d; font-weight: bold;")
+        self.label_stats.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        self.header_layout.addWidget(self.label_title)
+        self.header_layout.addStretch()
+        self.header_layout.addWidget(self.label_stats)
+        self.main_layout.addLayout(self.header_layout)
+        
+        # === Middle Splitter (Left, Center, Right) ===
+        self.middle_splitter = QSplitter(Qt.Horizontal, self.centralwidget)
+        
+        # --- Left Panel (20%) ---
+        self.left_panel = QFrame(self.middle_splitter)
         self.left_panel.setObjectName(u"left_panel")
-        self.left_panel_layout = QVBoxLayout(self.left_panel)
-        self.left_panel_layout.setSpacing(10)
-        self.left_panel_layout.setObjectName(u"left_panel_layout")
-        self.left_panel_layout.setContentsMargins(12, 12, 12, 12)
+        self.left_layout = QVBoxLayout(self.left_panel)
+        self.left_layout.setContentsMargins(12, 12, 12, 12)
         
-        # 标题标签
-        self.label_title = QLabel(self.left_panel)
-        self.label_title.setObjectName(u"label_title")
-        font = QFont()
-        font.setPointSize(16)
-        font.setBold(True)
-        self.label_title.setFont(font)
-        self.label_title.setText(u"全景图像拼接系统")
-        self.left_panel_layout.addWidget(self.label_title)
-        
-        # 按钮组合布局 (选择图片、选择文件夹、清空列表)
         self.buttons_layout = QHBoxLayout()
-        self.buttons_layout.setObjectName(u"buttons_layout")
-        
-        self.btn_select_images = QPushButton(self.left_panel)
-        self.btn_select_images.setObjectName(u"btn_select_images")
-        self.btn_select_images.setText(u"选择图片")
-        self.buttons_layout.addWidget(self.btn_select_images)
-        
-        self.btn_select_folder = QPushButton(self.left_panel)
-        self.btn_select_folder.setObjectName(u"btn_select_folder")
-        self.btn_select_folder.setText(u"选择文件夹")
-        self.buttons_layout.addWidget(self.btn_select_folder)
-        
-        self.btn_clear = QPushButton(self.left_panel)
+        self.btn_select_images = QPushButton(u"选择图片")
+        self.btn_select_folder = QPushButton(u"选择文件夹")
+        self.btn_clear = QPushButton(u"清空")
         self.btn_clear.setObjectName(u"btn_clear")
-        self.btn_clear.setText(u"清空列表")
+        self.buttons_layout.addWidget(self.btn_select_images)
+        self.buttons_layout.addWidget(self.btn_select_folder)
         self.buttons_layout.addWidget(self.btn_clear)
+        self.left_layout.addLayout(self.buttons_layout)
         
-        self.left_panel_layout.addLayout(self.buttons_layout)
+        self.label_list = QLabel(u"待拼接图片列表:")
+        self.left_layout.addWidget(self.label_list)
+        self.listWidget_images = QListWidget()
+        self.left_layout.addWidget(self.listWidget_images)
         
-        # 列表标签
-        self.label_list = QLabel(self.left_panel)
-        self.label_list.setObjectName(u"label_list")
-        self.label_list.setText(u"待拼接图片列表:")
-        self.left_panel_layout.addWidget(self.label_list)
-        
-        # 图片列表展示
-        self.listWidget_images = QListWidget(self.left_panel)
-        self.listWidget_images.setObjectName(u"listWidget_images")
-        self.left_panel_layout.addWidget(self.listWidget_images)
-        
-        # 🌟 智能全自动融合按钮 (第一行，占满一整行)
-        self.btn_smart_probe = QPushButton(self.left_panel)
+        self.btn_smart_probe = QPushButton(u"🌟 智能全自动融合")
         self.btn_smart_probe.setObjectName(u"btn_smart_probe")
-        self.btn_smart_probe.setText(u"🌟 智能全自动融合")
-        self.left_panel_layout.addWidget(self.btn_smart_probe)
-
-        # 线性融合 与 多频段融合 按钮水平布局 (第二行)
-        self.manual_blend_layout = QHBoxLayout()
-        self.manual_blend_layout.setObjectName(u"manual_blend_layout")
-
-        self.btn_linear = QPushButton(self.left_panel)
-        self.btn_linear.setObjectName(u"btn_linear")
-        self.btn_linear.setText(u"线性融合拼接")
-        self.manual_blend_layout.addWidget(self.btn_linear)
-
-        self.btn_multiband = QPushButton(self.left_panel)
-        self.btn_multiband.setObjectName(u"btn_multiband")
-        self.btn_multiband.setText(u"多频段融合拼接")
-        self.manual_blend_layout.addWidget(self.btn_multiband)
-
-        self.left_panel_layout.addLayout(self.manual_blend_layout)
+        self.left_layout.addWidget(self.btn_smart_probe)
         
-        # 进度条
-        self.progressBar = QProgressBar(self.left_panel)
-        self.progressBar.setObjectName(u"progressBar")
+        self.btn_start = QPushButton(u"开始拼接 (按右侧配置)")
+        self.btn_start.setObjectName(u"btn_start")
+        self.btn_start.setStyleSheet("background-color: #44bd32; font-size: 14px; padding: 10px;")
+        self.left_layout.addWidget(self.btn_start)
+        
+        self.btn_history = QPushButton(u"📜 历史档案库")
+        self.btn_history.setObjectName(u"btn_history")
+        self.btn_history.setStyleSheet("background-color: #9b59b6; font-size: 14px; padding: 10px;")
+        self.left_layout.addWidget(self.btn_history)
+        
+        self.progressBar = QProgressBar()
         self.progressBar.setValue(0)
-        self.left_panel_layout.addWidget(self.progressBar)
+        self.left_layout.addWidget(self.progressBar)
         
-        # 日志终端输出
-        self.label_log = QLabel(self.left_panel)
-        self.label_log.setObjectName(u"label_log")
-        self.label_log.setText(u"实时运行日志:")
-        self.left_panel_layout.addWidget(self.label_log)
+        # --- Center Panel (55%) ---
+        self.center_panel = QFrame(self.middle_splitter)
+        self.center_layout = QVBoxLayout(self.center_panel)
+        self.center_layout.setContentsMargins(0, 0, 0, 0)
+        self.center_splitter = QSplitter(Qt.Vertical, self.center_panel)
         
-        self.textEdit_log = QTextEdit(self.left_panel)
-        self.textEdit_log.setObjectName(u"textEdit_log")
-        self.textEdit_log.setReadOnly(True)
-        self.left_panel_layout.addWidget(self.textEdit_log)
+        self.preview_frame = QFrame(self.center_splitter)
+        self.preview_layout = QVBoxLayout(self.preview_frame)
+        self.preview_layout.setContentsMargins(0, 0, 0, 0)
         
-        # ----------------- 右侧预览面板 -----------------
-        self.right_panel = QFrame(self.splitter)
-        self.right_panel.setObjectName(u"right_panel")
-        self.right_panel.setStyleSheet(u"background-color: #2f3542; border-radius: 8px;")
-        self.right_panel_layout = QVBoxLayout(self.right_panel)
-        self.right_panel_layout.setSpacing(10)
-        self.right_panel_layout.setObjectName(u"right_panel_layout")
-        self.right_panel_layout.setContentsMargins(12, 12, 12, 12)
+        self.label_preview_title = QLabel(u"全景拼接预览区域")
+        self.label_preview_title.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")
+        self.preview_layout.addWidget(self.label_preview_title)
         
-        # 预览区域顶部标题
-        self.label_preview_title = QLabel(self.right_panel)
-        self.label_preview_title.setObjectName(u"label_preview_title")
-        self.label_preview_title.setStyleSheet(u"color: white; font-size: 15px; font-weight: bold;")
-        self.label_preview_title.setText(u"全景拼接预览区域")
-        self.right_panel_layout.addWidget(self.label_preview_title)
+        # 建立一个通用的容器，稍后在 main_window 中装载 DualImageViewer 或普通 QLabel
+        self.preview_container = QWidget()
+        self.preview_container_layout = QVBoxLayout(self.preview_container)
+        self.preview_container_layout.setContentsMargins(0, 0, 0, 0)
         
-        # 预览主体 QLabel
-        self.label_preview = QLabel(self.right_panel)
+        self.label_preview = QLabel(u"暂无全景图预览")
         self.label_preview.setObjectName(u"label_preview")
         self.label_preview.setAlignment(Qt.AlignCenter)
-        self.label_preview.setStyleSheet(u"border: 2px dashed #718093; border-radius: 6px; color: #a4b0be; background-color: #1e272e;")
-        self.label_preview.setText(u"暂无全景图预览\n\n请在左侧添加图片并点击“开始拼接”")
-        self.right_panel_layout.addWidget(self.label_preview)
+        self.label_preview.setStyleSheet(u"border: 2px dashed #718093; border-radius: 6px; background-color: #1e272e; color: #a4b0be;")
         
-        # 设定 splitter 初始比例 (左侧占比 40%，右侧占比 60%)
-        self.splitter.addWidget(self.left_panel)
-        self.splitter.addWidget(self.right_panel)
-        self.splitter.setSizes([440, 660])
+        self.preview_container_layout.addWidget(self.label_preview)
+        self.preview_layout.addWidget(self.preview_container, 1)
         
-        self.main_layout.addWidget(self.splitter)
+        self.log_frame = QFrame(self.center_splitter)
+        self.log_layout = QVBoxLayout(self.log_frame)
+        self.label_log_title = QLabel(u"实时运行日志")
+        self.label_log_title.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.textEdit_log = QTextEdit()
+        self.textEdit_log.setObjectName(u"textEdit_log")
+        self.textEdit_log.setReadOnly(True)
+        self.log_layout.addWidget(self.label_log_title)
+        self.log_layout.addWidget(self.textEdit_log)
+        
+        self.center_splitter.setSizes([500, 200])
+        self.center_layout.addWidget(self.center_splitter)
+        
+        # --- Right Panel (25%) ---
+        self.right_panel = QFrame(self.middle_splitter)
+        self.right_panel.setObjectName(u"right_panel")
+        self.right_layout = QVBoxLayout(self.right_panel)
+        self.right_layout.setContentsMargins(12, 12, 12, 12)
+        self.right_layout.setSpacing(15)
+        
+        self.label_config_title = QLabel(u"⚙️ 参数配置 (全局渗透)")
+        self.label_config_title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        self.right_layout.addWidget(self.label_config_title)
+        
+        self.label_blend = QLabel(u"融合模式:")
+        self.combo_blend_mode = QComboBox()
+        self.combo_blend_mode.setObjectName(u"combo_blend_mode")
+        self.combo_blend_mode.addItems([u"线性融合 (Linear)", u"多频段融合 (Multi-band)"])
+        self.right_layout.addWidget(self.label_blend)
+        self.right_layout.addWidget(self.combo_blend_mode)
+        
+        # ORB
+        self.orb_layout = QHBoxLayout()
+        self.label_orb = QLabel(u"ORB特征点数:")
+        self.label_orb_val = QLabel(u"3000")
+        self.label_orb_val.setObjectName(u"label_orb_val")
+        self.orb_layout.addWidget(self.label_orb)
+        self.orb_layout.addStretch()
+        self.orb_layout.addWidget(self.label_orb_val)
+        self.right_layout.addLayout(self.orb_layout)
+        self.slider_orb = QSlider(Qt.Horizontal)
+        self.slider_orb.setObjectName(u"slider_orb")
+        self.slider_orb.setRange(1000, 5000)
+        self.slider_orb.setSingleStep(500)
+        self.slider_orb.setValue(3000)
+        self.right_layout.addWidget(self.slider_orb)
+        
+        # RANSAC
+        self.ransac_layout = QHBoxLayout()
+        self.label_ransac = QLabel(u"RANSAC阈值:")
+        self.label_ransac_val = QLabel(u"5.0")
+        self.label_ransac_val.setObjectName(u"label_ransac_val")
+        self.ransac_layout.addWidget(self.label_ransac)
+        self.ransac_layout.addStretch()
+        self.ransac_layout.addWidget(self.label_ransac_val)
+        self.right_layout.addLayout(self.ransac_layout)
+        self.slider_ransac = QSlider(Qt.Horizontal)
+        self.slider_ransac.setObjectName(u"slider_ransac")
+        self.slider_ransac.setRange(10, 80)
+        self.slider_ransac.setSingleStep(5)
+        self.slider_ransac.setValue(50)
+        self.right_layout.addWidget(self.slider_ransac)
+        
+        # Quality
+        self.quality_layout = QHBoxLayout()
+        self.label_quality = QLabel(u"输出质量 (JPEG):")
+        self.label_quality_val = QLabel(u"95")
+        self.label_quality_val.setObjectName(u"label_quality_val")
+        self.quality_layout.addWidget(self.label_quality)
+        self.quality_layout.addStretch()
+        self.quality_layout.addWidget(self.label_quality_val)
+        self.right_layout.addLayout(self.quality_layout)
+        self.slider_quality = QSlider(Qt.Horizontal)
+        self.slider_quality.setObjectName(u"slider_quality")
+        self.slider_quality.setRange(1, 100)
+        self.slider_quality.setValue(95)
+        self.right_layout.addWidget(self.slider_quality)
+        
+        self.right_layout.addStretch()
+        
+        self.middle_splitter.setSizes([260, 715, 325])
+        self.main_layout.addWidget(self.middle_splitter, 3) # stretch factor 3
+        
+        # 移除底部的 tabWidget，因为历史记录已独立为弹窗
+        
         MainWindow.setCentralWidget(self.centralwidget)
-        
         QMetaObject.connectSlotsByName(MainWindow)
