@@ -64,6 +64,35 @@ class Ui_MainWindow(object):
             QPushButton#btn_clear:pressed {
                 background-color: #e84118;
             }
+            QPushButton#btn_smart_probe {
+                background-color: #6c5ce7;
+                font-size: 14px;
+                padding: 10px 15px;
+            }
+            QPushButton#btn_smart_probe:hover {
+                background-color: #8278fc;
+            }
+            QPushButton#btn_smart_probe:pressed {
+                background-color: #574b90;
+            }
+            QPushButton#btn_linear {
+                background-color: #487eb0;
+            }
+            QPushButton#btn_linear:hover {
+                background-color: #54a0ff;
+            }
+            QPushButton#btn_linear:pressed {
+                background-color: #273c75;
+            }
+            QPushButton#btn_multiband {
+                background-color: #e1b12c;
+            }
+            QPushButton#btn_multiband:hover {
+                background-color: #fbc531;
+            }
+            QPushButton#btn_multiband:pressed {
+                background-color: #b8860b;
+            }
             QComboBox {
                 border: 1px solid #dcdde1;
                 border-radius: 4px;
@@ -166,27 +195,27 @@ class Ui_MainWindow(object):
         self.listWidget_images.setObjectName(u"listWidget_images")
         self.left_panel_layout.addWidget(self.listWidget_images)
         
-        # 参数配置区域
-        self.param_layout = QHBoxLayout()
-        self.param_layout.setObjectName(u"param_layout")
-        self.label_blend = QLabel(self.left_panel)
-        self.label_blend.setObjectName(u"label_blend")
-        self.label_blend.setText(u"图像融合模式:")
-        self.param_layout.addWidget(self.label_blend)
-        
-        self.combo_blend_mode = QComboBox(self.left_panel)
-        self.combo_blend_mode.setObjectName(u"combo_blend_mode")
-        self.combo_blend_mode.addItem(u"线性融合 (Linear)")
-        self.combo_blend_mode.addItem(u"多频段融合 (Multi-band)")
-        self.param_layout.addWidget(self.combo_blend_mode)
-        
-        self.left_panel_layout.addLayout(self.param_layout)
-        
-        # 开始拼接按钮
-        self.btn_start = QPushButton(self.left_panel)
-        self.btn_start.setObjectName(u"btn_start")
-        self.btn_start.setText(u"开始拼接全景图")
-        self.left_panel_layout.addWidget(self.btn_start)
+        # 🌟 智能全自动融合按钮 (第一行，占满一整行)
+        self.btn_smart_probe = QPushButton(self.left_panel)
+        self.btn_smart_probe.setObjectName(u"btn_smart_probe")
+        self.btn_smart_probe.setText(u"🌟 智能全自动融合")
+        self.left_panel_layout.addWidget(self.btn_smart_probe)
+
+        # 线性融合 与 多频段融合 按钮水平布局 (第二行)
+        self.manual_blend_layout = QHBoxLayout()
+        self.manual_blend_layout.setObjectName(u"manual_blend_layout")
+
+        self.btn_linear = QPushButton(self.left_panel)
+        self.btn_linear.setObjectName(u"btn_linear")
+        self.btn_linear.setText(u"线性融合拼接")
+        self.manual_blend_layout.addWidget(self.btn_linear)
+
+        self.btn_multiband = QPushButton(self.left_panel)
+        self.btn_multiband.setObjectName(u"btn_multiband")
+        self.btn_multiband.setText(u"多频段融合拼接")
+        self.manual_blend_layout.addWidget(self.btn_multiband)
+
+        self.left_panel_layout.addLayout(self.manual_blend_layout)
         
         # 进度条
         self.progressBar = QProgressBar(self.left_panel)

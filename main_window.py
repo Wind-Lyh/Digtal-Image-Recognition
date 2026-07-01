@@ -15,7 +15,7 @@ from ui_main import Ui_MainWindow
 
 # 引入开发者A的核心算法
 from feature_matcher import match_images_from_memory
-from test_my_data import run_stitching_pipeline
+from test_my_data import run_stitching_pipeline, smart_topology_probe
 from utils.image_io import crop_black_border, save_panorama
 
 
@@ -42,16 +42,18 @@ class WorkerSignals(QObject):
     log = Signal(str)                  # 日志文本
     result_img = Signal(np.ndarray)    # 最终输出图像 (BGR)
     finished = Signal(bool, str)       # 结束状态 (是否成功, 报错信息)
+    update_combo = Signal(str)         # UI 下拉框联动信号
 
 
 class StitchWorker(QThread):
     """
     异步拼接核心 Worker (彻底分离 UI 和耗时计算，保障主界面极致流畅)
     """
-    def __init__(self, img_paths: List[str], blend_mode: str):
+    def __init__(self, img_paths: List[str], blend_mode: str, smart_probe: bool = False):
         super().__init__()
         self.img_paths = img_paths
         self.blend_mode = blend_mode
+        self.smart_probe = smart_probe
         self.signals = WorkerSignals()
 
     def run(self):
@@ -93,15 +95,31 @@ class StitchWorker(QThread):
                     
                 self.signals.log.emit(f"成功提取优质匹配点对: {len(good_matches)}")
                 
+                # --- 智能探针逻辑 ---
+                current_blend_mode = self.blend_mode
+                if self.smart_probe:
+                    self.signals.log.emit("🔍 [智能探针] 正在执行自适应检测...")
+                    direction_msg, force_multiband, exposure_diff = smart_topology_probe(
+                        panorama, next_img, src_pts, dst_pts, exposure_thresh=25
+                    )
+                    self.signals.log.emit(f"🔮 [智能探针] 自动识别空间布局：{direction_msg}")
+                    
+                    if force_multiband and current_blend_mode != "multiband":
+                        self.signals.log.emit(f"⚠️ [智能探针] 检测到重叠区曝光差异过大 (Diff={exposure_diff:.1f})！")
+                        self.signals.log.emit("⚠️ 为了保证光照平滑，系统已自动强制覆盖用户参数，启用 Multi-band 融合！")
+                        current_blend_mode = "multiband"
+                        self.signals.update_combo.emit("多频段融合 (Multi-band)")
+                # ------------------
+                
                 # 步骤 B：调用 A 引擎核心流水线
-                self.signals.log.emit(f"调用核心引擎流水线 (融合模式: {self.blend_mode})...")
+                self.signals.log.emit(f"调用核心引擎流水线 (融合模式: {current_blend_mode})...")
                 
                 panorama = run_stitching_pipeline(
                     panorama, 
                     next_img, 
                     src_pts, 
                     dst_pts, 
-                    blend_mode=self.blend_mode
+                    blend_mode=current_blend_mode
                 )
                 
                 # 更新进度
@@ -149,15 +167,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.append_log("系统初始化完成，PySide6 环境已就绪。")
 
     def _connect_signals(self):
-        """绑定按钮等界面的交互事件 (注意：请核对 UI 组件的 objectName)"""
+        """绑定按钮等界面的交互事件 (注意：请核对 UI 组件 of objectName)"""
         if hasattr(self, 'btn_select_images'):
             self.btn_select_images.clicked.connect(self.select_images)
         if hasattr(self, 'btn_select_folder'):
             self.btn_select_folder.clicked.connect(self.select_folder)
         if hasattr(self, 'btn_clear'):
             self.btn_clear.clicked.connect(self.clear_images)
-        if hasattr(self, 'btn_start'):
-            self.btn_start.clicked.connect(self.start_stitching)
+        if hasattr(self, 'btn_smart_probe'):
+            self.btn_smart_probe.clicked.connect(self.start_smart_stitching)
+        if hasattr(self, 'btn_linear'):
+            self.btn_linear.clicked.connect(self.start_linear_stitching)
+        if hasattr(self, 'btn_multiband'):
+            self.btn_multiband.clicked.connect(self.start_multiband_stitching)
 
     def closeEvent(self, event):
         """窗口关闭时还原系统输出流，防止异常"""
@@ -218,42 +240,44 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def set_ui_enabled(self, enabled: bool):
         """交互锁死控制，防止多线程竞争导致崩溃"""
         widgets = ['btn_select_images', 'btn_select_folder', 
-                   'btn_clear', 'btn_start', 'combo_blend_mode']
+                   'btn_clear', 'btn_smart_probe', 'btn_linear', 'btn_multiband']
         for w_name in widgets:
             if hasattr(self, w_name):
                 getattr(self, w_name).setEnabled(enabled)
 
-    def start_stitching(self):
+    def update_combo_ui(self, text: str):
+        pass # 下拉框已被移除，故此函数空置
+
+    def start_smart_stitching(self):
+        self._trigger_stitching(blend_mode="linear", smart_probe=True)
+        
+    def start_linear_stitching(self):
+        self._trigger_stitching(blend_mode="linear", smart_probe=False)
+
+    def start_multiband_stitching(self):
+        self._trigger_stitching(blend_mode="multiband", smart_probe=False)
+
+    def _trigger_stitching(self, blend_mode: str, smart_probe: bool):
         if len(self.img_paths) < 2:
             QMessageBox.warning(self, "温馨提示", "请至少选择两张图片！")
             return
             
-        # 从 UI 下拉框读取融合模式参数（修复了原 gui.py 无法传参的 Bug）
-        # 约定：下拉项若包含 "multi" 字眼，则为 multiband，否则默认 linear
-        blend_mode = "linear"
-        if hasattr(self, 'combo_blend_mode'):
-            mode_text = self.combo_blend_mode.currentText().lower()
-            if "multi" in mode_text or "多频段" in mode_text:
-                blend_mode = "multiband"
+        probe_status = "开启" if smart_probe else "关闭"
+        self.append_log(f"-> 准备启动后台线程，模式={blend_mode}，智能探针={probe_status}...")
         
-        self.append_log(f"-> 准备启动后台线程，模式={blend_mode}...")
-        
-        # 开启界面锁死
         self.set_ui_enabled(False)
         
         if hasattr(self, 'progressBar'):
             self.progressBar.setValue(0)
             
-        # 实例化异步线程
-        self.worker = StitchWorker(self.img_paths, blend_mode)
+        self.worker = StitchWorker(self.img_paths, blend_mode, smart_probe=smart_probe)
         
-        # 绑定核心信号与槽
+        self.worker.signals.progress.connect(self.progressBar.setValue if hasattr(self, 'progressBar') else lambda x: None)
         self.worker.signals.log.connect(self.append_log)
-        self.worker.signals.progress.connect(self.update_progress)
         self.worker.signals.result_img.connect(self.show_result_image)
         self.worker.signals.finished.connect(self.on_stitch_finished)
+        self.worker.signals.update_combo.connect(self.update_combo_ui)
         
-        # 启动计算
         self.worker.start()
 
     def update_progress(self, val: int):

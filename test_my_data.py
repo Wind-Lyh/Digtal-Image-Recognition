@@ -220,3 +220,53 @@ def run_stitching_pipeline(img1, img2, src_pts, dst_pts, blend_mode="linear"):
     print(f"[A Engine] Auto-cropped final size: {final.shape[1]} x {final.shape[0]}")
     
     return final
+
+def smart_topology_probe(img1: np.ndarray, img2: np.ndarray, src_pts: np.ndarray, dst_pts: np.ndarray, exposure_thresh: int = 25):
+    """
+    智能拓扑探针：
+    1. 计算平均平移量来判断方向
+    2. 计算重叠区域灰度差来判断是否强制使用多频段融合
+    """
+    if len(src_pts) == 0 or len(dst_pts) == 0:
+        return "未知方向", False, 0.0
+
+    # 1. 计算平均几何平移向量
+    dx = np.mean(src_pts[:, 0] - dst_pts[:, 0])
+    dy = np.mean(src_pts[:, 1] - dst_pts[:, 1])
+    
+    if abs(dx) > abs(dy):
+        if dx > 0:
+            direction = "右侧拼接"
+            matrix_desc = "横向"
+        else:
+            direction = "左侧拼接"
+            matrix_desc = "横向"
+    else:
+        if dy > 0:
+            direction = "下方拼接"
+            matrix_desc = "纵向"
+        else:
+            direction = "上方拼接"
+            matrix_desc = "纵向"
+            
+    direction_msg = f"图 B 位于图 A 的【{direction}】，转换为{matrix_desc}矩阵。"
+    
+    # 2. 曝光差异度计算 (提取匹配点局部灰度)
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    
+    h1, w1 = gray1.shape
+    h2, w2 = gray2.shape
+    
+    x1_valid = np.clip(src_pts[:, 0].astype(int), 0, w1 - 1)
+    y1_valid = np.clip(src_pts[:, 1].astype(int), 0, h1 - 1)
+    x2_valid = np.clip(dst_pts[:, 0].astype(int), 0, w2 - 1)
+    y2_valid = np.clip(dst_pts[:, 1].astype(int), 0, h2 - 1)
+    
+    mean1 = np.mean(gray1[y1_valid, x1_valid])
+    mean2 = np.mean(gray2[y2_valid, x2_valid])
+    
+    exposure_diff = abs(mean1 - mean2)
+    force_multiband = exposure_diff > exposure_thresh
+    
+    return direction_msg, force_multiband, exposure_diff
