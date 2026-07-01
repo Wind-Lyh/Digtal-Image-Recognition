@@ -1,0 +1,6 @@
+{
+    "blend_mode": "multiband",
+    "orb_features": 3921,
+    "ransac_thresh": 4.1,
+    "jpeg_quality": 21
+}
