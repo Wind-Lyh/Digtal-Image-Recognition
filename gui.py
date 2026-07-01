@@ -2,7 +2,6 @@ import os
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from PIL import Image, ImageTk
 import cv2
 import numpy as np
 
@@ -10,6 +9,8 @@ from test_my_data import compute_canvas_size, make_blend_mask, auto_crop_black
 
 
 def stitch_images(img1, img2, src_pts, dst_pts):
+    src_pts = np.float32(src_pts).reshape(-1, 1, 2)
+    dst_pts = np.float32(dst_pts).reshape(-1, 1, 2)
     H_1to2, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
     H_2to1 = np.linalg.inv(H_1to2)
 
@@ -239,42 +240,24 @@ class StitchGUI:
             self.progress_bar.stop()
 
     def show_result(self, image_path):
-        result_window = tk.Toplevel(self.root)
-        result_window.title("拼接结果")
-        result_window.geometry("900x700")
-        result_window.resizable(True, True)
-
         img = cv2.imread(image_path)
         if img is None:
             messagebox.showerror("错误", "无法读取拼接结果")
             return
 
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        height, width = img_rgb.shape[:2]
-
-        max_size = 850
+        height, width = img.shape[:2]
+        max_size = 1000
         if max(width, height) > max_size:
             scale = max_size / max(width, height)
-            width = int(width * scale)
-            height = int(height * scale)
-            img_rgb = cv2.resize(img_rgb, (width, height))
+            img = cv2.resize(img, (int(width * scale), int(height * scale)))
 
-        photo = ImageTk.PhotoImage(image=Image.fromarray(img_rgb))
-
-        canvas = tk.Canvas(result_window, bg='#1a1a2e', highlightthickness=0)
-        canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        canvas.create_image(width // 2, height // 2, image=photo, anchor=tk.CENTER)
-        canvas.image = photo
-
-        info_frame = ttk.Frame(result_window)
-        info_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
-
-        ttk.Label(info_frame, text=f"图片尺寸: {width} x {height}", style='Header.TLabel').pack(side=tk.LEFT, padx=10)
-        ttk.Label(info_frame, text=f"保存路径: {image_path}", style='Status.TLabel').pack(side=tk.RIGHT, padx=10)
+        cv2.namedWindow("拼接结果", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("拼接结果", min(900, img.shape[1]), min(700, img.shape[0]))
+        cv2.imshow("拼接结果", img)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = StitchGUI(root)
     root.mainloop()
+    cv2.destroyAllWindows()
