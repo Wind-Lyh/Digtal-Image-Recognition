@@ -5,7 +5,7 @@ from typing import Dict, List
 import cv2
 import numpy as np
 
-from config import MIN_MATCH_COUNT
+import config
 from core.homography_estimator import HomographyEstimator, HomographyEstimationError, InsufficientPointsError
 from core.image_warper import ImageWarper
 from core.image_blender import ImageBlender
@@ -110,7 +110,7 @@ class StitchPipeline:
     
     def run_real(self, img_paths: List[str], blend_mode: str = 'linear') -> str:
         """
-        使用真实图片进行拼接，使用ORB特征匹配
+        使用真实图片进行拼接，从.npy文件加载预计算的匹配点
         
         Args:
             img_paths: 图像路径列表
@@ -136,47 +136,27 @@ class StitchPipeline:
             print("有效图像不足")
             return ""
         
-        result = imgs[0]
-        H_accum = np.eye(3)
+        img1 = imgs[0]
+        img2 = imgs[1]
         
-        for i in range(1, len(imgs)):
-            print(f"正在拼接第 {i} 张图像...")
-            
-            img1 = result
-            img2 = imgs[i]
-            
-            orb = cv2.ORB_create(500)
-            kp1, des1 = orb.detectAndCompute(img1, None)
-            kp2, des2 = orb.detectAndCompute(img2, None)
-            
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-            matches = bf.match(des1, des2)
-            matches = sorted(matches, key=lambda x: x.distance)
-            
-            good_matches = matches[:min(100, len(matches))]
-            
-            if len(good_matches) < MIN_MATCH_COUNT:
-                print(f"匹配点数量不足: {len(good_matches)} < {MIN_MATCH_COUNT}")
-                continue
-            
-            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-            
-            try:
-                H, mask = HomographyEstimator.compute(src_pts.reshape(-1, 2), dst_pts.reshape(-1, 2))
-                print(f"单应矩阵计算成功，内点数量: {np.sum(mask)}")
-            except (InsufficientPointsError, HomographyEstimationError) as e:
-                print(f"单应矩阵计算失败: {e}")
-                continue
-            
-            H_accum = H @ H_accum
-            
-            canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([img1, img2], [np.eye(3), H])
-            
-            warped_img1 = ImageWarper.warp_image(img1, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
-            warped_img2 = ImageWarper.warp_image(img2, H, canvas_width, canvas_height, x_offset, y_offset)
-            
-            result = ImageBlender.blend(warped_img1, warped_img2, mode=blend_mode)
+        print("从预计算文件加载匹配点...")
+        src_pts = np.load("images/src_pts.npy")
+        dst_pts = np.load("images/dst_pts.npy")
+        print(f"加载匹配点数量: {src_pts.shape[0]}")
+        
+        try:
+            H, mask = HomographyEstimator.compute(src_pts, dst_pts)
+            print(f"单应矩阵计算成功，内点数量: {np.sum(mask)}")
+        except (InsufficientPointsError, HomographyEstimationError) as e:
+            print(f"单应矩阵计算失败: {e}")
+            return ""
+        
+        canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([img1, img2], [np.eye(3), H])
+        
+        warped_img1 = ImageWarper.warp_image(img1, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
+        warped_img2 = ImageWarper.warp_image(img2, H, canvas_width, canvas_height, x_offset, y_offset)
+        
+        result = ImageBlender.blend(warped_img1, warped_img2, mode=blend_mode)
         
         cropped = crop_black_border(result)
         
