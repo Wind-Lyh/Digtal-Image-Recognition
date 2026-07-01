@@ -108,13 +108,69 @@ class StitchPipeline:
         
         return output_path
     
-    def run_real(self, img_paths: List[str], blend_mode: str = 'linear') -> str:
+    def _detect_direction(self, img1, img2, kp1, kp2, matches):
+        """
+        根据匹配点位置自动检测拼接方向
+        
+        Args:
+            img1: 第一张图像
+            img2: 第二张图像
+            kp1: 第一张图像的关键点
+            kp2: 第二张图像的关键点
+            matches: 匹配结果
+            
+        Returns:
+            检测到的拼接方向: 'left', 'right', 'top', 'bottom'
+        """
+        h1, w1 = img1.shape[:2]
+        h2, w2 = img2.shape[:2]
+        
+        img1_x_coords = []
+        img2_x_coords = []
+        img1_y_coords = []
+        img2_y_coords = []
+        
+        for m in matches[:min(50, len(matches))]:
+            img1_x_coords.append(kp1[m.queryIdx].pt[0])
+            img1_y_coords.append(kp1[m.queryIdx].pt[1])
+            img2_x_coords.append(kp2[m.trainIdx].pt[0])
+            img2_y_coords.append(kp2[m.trainIdx].pt[1])
+        
+        img1_x_mean = np.mean(img1_x_coords)
+        img2_x_mean = np.mean(img2_x_coords)
+        img1_y_mean = np.mean(img1_y_coords)
+        img2_y_mean = np.mean(img2_y_coords)
+        
+        img1_x_ratio = img1_x_mean / w1
+        img2_x_ratio = img2_x_mean / w2
+        img1_y_ratio = img1_y_mean / h1
+        img2_y_ratio = img2_y_mean / h2
+        
+        x_diff_ratio = abs(img1_x_ratio - img2_x_ratio)
+        y_diff_ratio = abs(img1_y_ratio - img2_y_ratio)
+        
+        if x_diff_ratio > y_diff_ratio:
+            if img1_x_ratio > img2_x_ratio:
+                direction = 'right'
+            else:
+                direction = 'left'
+        else:
+            if img1_y_ratio > img2_y_ratio:
+                direction = 'bottom'
+            else:
+                direction = 'top'
+        
+        print(f"自动检测拼接方向: {direction} (img1_x_ratio={img1_x_ratio:.2f}, img2_x_ratio={img2_x_ratio:.2f})")
+        return direction
+    
+    def run_real(self, img_paths: List[str], blend_mode: str = 'linear', direction: str = 'auto') -> str:
         """
         使用真实图片进行拼接，使用ORB特征匹配
         
         Args:
             img_paths: 图像路径列表
             blend_mode: 融合模式，'linear' 或 'multiband'
+            direction: 拼接方向，'auto', 'left', 'right', 'top', 'bottom'
             
         Returns:
             输出图像的保存路径
@@ -136,47 +192,123 @@ class StitchPipeline:
             print("有效图像不足")
             return ""
         
-        result = imgs[0]
-        H_accum = np.eye(3)
-        
-        for i in range(1, len(imgs)):
-            print(f"正在拼接第 {i} 张图像...")
+        if len(imgs) == 2:
+            img1 = imgs[0]
+            img2 = imgs[1]
             
-            img1 = result
-            img2 = imgs[i]
-            
-            orb = cv2.ORB_create(500)
+            orb = cv2.ORB_create(nfeatures=2000, scaleFactor=1.2, nlevels=8, edgeThreshold=15)
             kp1, des1 = orb.detectAndCompute(img1, None)
             kp2, des2 = orb.detectAndCompute(img2, None)
             
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-            matches = bf.match(des1, des2)
-            matches = sorted(matches, key=lambda x: x.distance)
+            print(f"检测到特征点: 图1={len(kp1)}个, 图2={len(kp2)}个")
             
-            good_matches = matches[:min(100, len(matches))]
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+            matches = bf.knnMatch(des1, des2, k=2)
+            
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.75 * n.distance:
+                    good_matches.append(m)
+            
+            good_matches = sorted(good_matches, key=lambda x: x.distance)
+            good_matches = good_matches[:min(200, len(good_matches))]
             
             if len(good_matches) < MIN_MATCH_COUNT:
                 print(f"匹配点数量不足: {len(good_matches)} < {MIN_MATCH_COUNT}")
-                continue
+                return ""
             
-            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            if direction == 'auto':
+                detected_direction = self._detect_direction(img1, img2, kp1, kp2, good_matches)
+            else:
+                detected_direction = direction
+            
+            print(f"拼接方向: {detected_direction}")
+            
+            if detected_direction in ['left', 'top']:
+                src_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                dst_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                ref_img = img2
+                warp_img = img1
+                print(f"第二张图放在左边/上边")
+            else:
+                src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                ref_img = img1
+                warp_img = img2
+                print(f"第一张图放在左边/上边")
             
             try:
                 H, mask = HomographyEstimator.compute(src_pts.reshape(-1, 2), dst_pts.reshape(-1, 2))
                 print(f"单应矩阵计算成功，内点数量: {np.sum(mask)}")
             except (InsufficientPointsError, HomographyEstimationError) as e:
                 print(f"单应矩阵计算失败: {e}")
-                continue
+                return ""
             
-            H_accum = H @ H_accum
+            canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([ref_img, warp_img], [np.eye(3), H])
             
-            canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([img1, img2], [np.eye(3), H])
+            warped_ref = ImageWarper.warp_image(ref_img, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
+            warped_warp = ImageWarper.warp_image(warp_img, H, canvas_width, canvas_height, x_offset, y_offset)
             
-            warped_img1 = ImageWarper.warp_image(img1, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
-            warped_img2 = ImageWarper.warp_image(img2, H, canvas_width, canvas_height, x_offset, y_offset)
+            result = ImageBlender.blend(warped_ref, warped_warp, mode=blend_mode)
+        else:
+            result = imgs[0]
             
-            result = ImageBlender.blend(warped_img1, warped_img2, mode=blend_mode)
+            for i in range(1, len(imgs)):
+                print(f"正在拼接第 {i} 张图像...")
+                
+                img1 = result
+                img2 = imgs[i]
+                
+                orb = cv2.ORB_create(nfeatures=2000, scaleFactor=1.2, nlevels=8, edgeThreshold=15)
+                kp1, des1 = orb.detectAndCompute(img1, None)
+                kp2, des2 = orb.detectAndCompute(img2, None)
+                
+                print(f"检测到特征点: 图1={len(kp1)}个, 图2={len(kp2)}个")
+                
+                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+                matches = bf.knnMatch(des1, des2, k=2)
+                
+                good_matches = []
+                for m, n in matches:
+                    if m.distance < 0.75 * n.distance:
+                        good_matches.append(m)
+                
+                good_matches = sorted(good_matches, key=lambda x: x.distance)
+                good_matches = good_matches[:min(200, len(good_matches))]
+                
+                if len(good_matches) < MIN_MATCH_COUNT:
+                    print(f"匹配点数量不足: {len(good_matches)} < {MIN_MATCH_COUNT}")
+                    continue
+                
+                if direction == 'auto':
+                    detected_direction = self._detect_direction(img1, img2, kp1, kp2, good_matches)
+                else:
+                    detected_direction = direction
+                
+                if detected_direction in ['left', 'top']:
+                    src_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                    dst_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                    ref_img = img2
+                    warp_img = img1
+                else:
+                    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                    ref_img = img1
+                    warp_img = img2
+                
+                try:
+                    H, mask = HomographyEstimator.compute(src_pts.reshape(-1, 2), dst_pts.reshape(-1, 2))
+                    print(f"单应矩阵计算成功，内点数量: {np.sum(mask)}")
+                except (InsufficientPointsError, HomographyEstimationError) as e:
+                    print(f"单应矩阵计算失败: {e}")
+                    continue
+                
+                canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([ref_img, warp_img], [np.eye(3), H])
+                
+                warped_ref = ImageWarper.warp_image(ref_img, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
+                warped_warp = ImageWarper.warp_image(warp_img, H, canvas_width, canvas_height, x_offset, y_offset)
+                
+                result = ImageBlender.blend(warped_ref, warped_warp, mode=blend_mode)
         
         cropped = crop_black_border(result)
         
@@ -191,6 +323,9 @@ if __name__ == "__main__":
     parser.add_argument('--folder', type=str, help='图片文件夹路径')
     parser.add_argument('--blend', type=str, default='linear', choices=['linear', 'multiband'], 
                         help='融合方式: linear (线性融合) 或 multiband (多频段融合)')
+    parser.add_argument('--direction', type=str, default='auto', 
+                        choices=['auto', 'left', 'right', 'top', 'bottom'],
+                        help='拼接方向: auto(自动检测), left(第二张在左), right(第二张在右), top(第二张在上), bottom(第二张在下)')
     parser.add_argument('--output', type=str, default='output/panorama.jpg', help='输出路径')
     parser.add_argument('--simulate', action='store_true', help='运行模拟测试')
     
@@ -214,7 +349,7 @@ if __name__ == "__main__":
             print("文件夹中未找到图片")
         else:
             print(f"找到 {len(img_paths)} 张图片")
-            output_path = pipeline.run_real(img_paths, blend_mode=args.blend)
+            output_path = pipeline.run_real(img_paths, blend_mode=args.blend, direction=args.direction)
             if output_path:
                 print(f"拼接完成，全景图像已保存到: {output_path}")
             else:
