@@ -5,7 +5,7 @@ from typing import Dict, List
 import cv2
 import numpy as np
 
-from config import MIN_MATCH_COUNT
+import config
 from core.homography_estimator import HomographyEstimator, HomographyEstimationError, InsufficientPointsError
 from core.image_warper import ImageWarper
 from core.image_blender import ImageBlender
@@ -165,7 +165,7 @@ class StitchPipeline:
     
     def run_real(self, img_paths: List[str], blend_mode: str = 'linear', direction: str = 'auto') -> str:
         """
-        使用真实图片进行拼接，使用ORB特征匹配
+        使用真实图片进行拼接，从.npy文件加载预计算的匹配点
         
         Args:
             img_paths: 图像路径列表
@@ -309,6 +309,27 @@ class StitchPipeline:
                 warped_warp = ImageWarper.warp_image(warp_img, H, canvas_width, canvas_height, x_offset, y_offset)
                 
                 result = ImageBlender.blend(warped_ref, warped_warp, mode=blend_mode)
+        img1 = imgs[0]
+        img2 = imgs[1]
+        
+        print("从预计算文件加载匹配点...")
+        src_pts = np.load("images/src_pts.npy")
+        dst_pts = np.load("images/dst_pts.npy")
+        print(f"加载匹配点数量: {src_pts.shape[0]}")
+        
+        try:
+            H, mask = HomographyEstimator.compute(src_pts, dst_pts)
+            print(f"单应矩阵计算成功，内点数量: {np.sum(mask)}")
+        except (InsufficientPointsError, HomographyEstimationError) as e:
+            print(f"单应矩阵计算失败: {e}")
+            return ""
+        
+        canvas_width, canvas_height, x_offset, y_offset = ImageWarper.get_canvas_size([img1, img2], [np.eye(3), H])
+        
+        warped_img1 = ImageWarper.warp_image(img1, np.eye(3), canvas_width, canvas_height, x_offset, y_offset)
+        warped_img2 = ImageWarper.warp_image(img2, H, canvas_width, canvas_height, x_offset, y_offset)
+        
+        result = ImageBlender.blend(warped_img1, warped_img2, mode=blend_mode)
         
         cropped = crop_black_border(result)
         
