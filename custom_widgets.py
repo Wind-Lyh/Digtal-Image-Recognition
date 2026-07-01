@@ -174,3 +174,200 @@ class DualImageViewer(QWidget):
         # 恢复单窗模式时，可以只加载一张图，或者隐藏一个 view
         self.view_left.set_image(QPixmap())
         self.view_right.set_image(QPixmap())
+
+
+class InteractiveImageViewer(QWidget):
+    """
+    专业交互式全景图看图组件
+    - 鼠标左键拖拽平移
+    - 滚轮以鼠标悬停点为中心平滑缩放
+    - 底部悬浮工具栏: 旋转 / 镜像 / 适应窗口 / 1:1 / 网格
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # === QGraphicsView 核心 ===
+        self._scene = QGraphicsScene(self)
+        self._view = QGraphicsView(self._scene)
+        self._pixmap_item = QGraphicsPixmapItem()
+        self._scene.addItem(self._pixmap_item)
+
+        self._view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self._view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self._view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self._view.setRenderHints(
+            self._view.renderHints()
+            | self._view.renderHints().__class__(0x04)  # SmoothPixmapTransform
+        )
+        self._view.setStyleSheet("border: none; background-color: #1e272e;")
+        self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        # 拦截滚轮
+        self._view.wheelEvent = self._on_wheel
+
+        layout.addWidget(self._view, 1)
+
+        # === 占位提示文字 ===
+        self._placeholder = QLabel("暂无全景图预览")
+        self._placeholder.setAlignment(Qt.AlignCenter)
+        self._placeholder.setStyleSheet(
+            "color: #a4b0be; font-size: 16px; background: transparent;"
+        )
+        self._placeholder.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._placeholder.setParent(self._view.viewport())
+
+        # === 网格叠加层 ===
+        self._grid_visible = False
+        self._grid_lines = []
+
+        # === 悬浮工具栏 ===
+        toolbar = QWidget(self)
+        toolbar.setStyleSheet(
+            "background-color: rgba(30,39,46,0.85); border-radius: 6px;"
+        )
+        tb_layout = QHBoxLayout(toolbar)
+        tb_layout.setContentsMargins(8, 4, 8, 4)
+        tb_layout.setSpacing(4)
+
+        btn_style = (
+            "QPushButton { background: transparent; color: white; font-size: 18px;"
+            " border: none; padding: 4px 8px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(255,255,255,0.15); }"
+            "QPushButton:pressed { background-color: rgba(255,255,255,0.25); }"
+        )
+
+        self.btn_rotate = QPushButton("↻")
+        self.btn_rotate.setToolTip("顺时针旋转 90°")
+        self.btn_mirror = QPushButton("⇔")
+        self.btn_mirror.setToolTip("水平镜像翻转")
+        self.btn_fit = QPushButton("⊞")
+        self.btn_fit.setToolTip("适应窗口 (Fit)")
+        self.btn_actual = QPushButton("1:1")
+        self.btn_actual.setToolTip("实际像素大小")
+        self.btn_grid = QPushButton("▦")
+        self.btn_grid.setToolTip("网格辅助线")
+
+        for btn in [self.btn_rotate, self.btn_mirror, self.btn_fit, self.btn_actual, self.btn_grid]:
+            btn.setStyleSheet(btn_style)
+            btn.setFixedSize(36, 30)
+            tb_layout.addWidget(btn)
+
+        toolbar.adjustSize()
+        self._toolbar = toolbar
+
+        # 信号绑定
+        self.btn_rotate.clicked.connect(self._rotate_90)
+        self.btn_mirror.clicked.connect(self._mirror_h)
+        self.btn_fit.clicked.connect(self.fit_in_view)
+        self.btn_actual.clicked.connect(self._actual_pixels)
+        self.btn_grid.clicked.connect(self._toggle_grid)
+
+        self._rotation = 0  # 累计旋转角度
+
+    # ========== 公共 API ==========
+
+    def set_image_from_bgr(self, img_bgr):
+        """接收 OpenCV BGR ndarray 并展示"""
+        import cv2
+        from PySide6.QtGui import QImage as _QImage
+        import numpy as np
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        img_rgb = np.ascontiguousarray(img_rgb)
+        h, w, ch = img_rgb.shape
+        bytes_per_line = ch * w
+        q_img = _QImage(img_rgb.data, w, h, bytes_per_line, _QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_img)
+        self._set_pixmap(pixmap)
+
+    def set_image_from_path(self, path):
+        """从文件路径加载"""
+        if path and os.path.exists(path):
+            self._set_pixmap(QPixmap(path))
+
+    def clear_image(self):
+        self._pixmap_item.setPixmap(QPixmap())
+        self._scene.setSceneRect(0, 0, 0, 0)
+        self._placeholder.show()
+        self._rotation = 0
+        self._clear_grid()
+
+    def fit_in_view(self):
+        if self._pixmap_item.pixmap() and not self._pixmap_item.pixmap().isNull():
+            self._view.fitInView(self._pixmap_item, Qt.KeepAspectRatio)
+
+    # ========== 内部方法 ==========
+
+    def _set_pixmap(self, pixmap):
+        self._pixmap_item.setPixmap(pixmap)
+        self._scene.setSceneRect(self._pixmap_item.boundingRect())
+        self._placeholder.hide()
+        self._rotation = 0
+        self._clear_grid()
+        self.fit_in_view()
+
+    def _on_wheel(self, event):
+        if event.angleDelta().y() > 0:
+            factor = 1.15
+        else:
+            factor = 1.0 / 1.15
+        self._view.scale(factor, factor)
+
+    def _rotate_90(self):
+        self._rotation = (self._rotation + 90) % 360
+        self._view.rotate(90)
+
+    def _mirror_h(self):
+        self._view.scale(-1, 1)
+
+    def _actual_pixels(self):
+        self._view.resetTransform()
+        if self._rotation != 0:
+            self._view.rotate(self._rotation)
+
+    def _toggle_grid(self):
+        self._grid_visible = not self._grid_visible
+        if self._grid_visible:
+            self._draw_grid()
+        else:
+            self._clear_grid()
+
+    def _draw_grid(self):
+        self._clear_grid()
+        pixmap = self._pixmap_item.pixmap()
+        if pixmap is None or pixmap.isNull():
+            return
+        from PySide6.QtGui import QPen, QColor
+        w = pixmap.width()
+        h = pixmap.height()
+        pen = QPen(QColor(255, 255, 255, 80), max(1, min(w, h) / 500))
+        for i in range(1, 3):
+            x = w * i / 3
+            line = self._scene.addLine(x, 0, x, h, pen)
+            self._grid_lines.append(line)
+        for i in range(1, 3):
+            y = h * i / 3
+            line = self._scene.addLine(0, y, w, y, pen)
+            self._grid_lines.append(line)
+
+    def _clear_grid(self):
+        for line in self._grid_lines:
+            self._scene.removeItem(line)
+        self._grid_lines.clear()
+
+    # ========== 布局事件 ==========
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 将悬浮工具栏定位在底部中央
+        tw = self._toolbar.sizeHint().width()
+        th = self._toolbar.sizeHint().height()
+        x = (self.width() - tw) // 2
+        y = self.height() - th - 10
+        self._toolbar.setGeometry(x, y, tw, th)
+        # 占位文字居中
+        self._placeholder.setGeometry(0, 0, self._view.viewport().width(), self._view.viewport().height())
+

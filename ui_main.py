@@ -3,6 +3,7 @@ from PySide6.QtGui import QFont, QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel,
     QListWidget, QMainWindow, QProgressBar, QPushButton,
     QSplitter, QTextEdit, QVBoxLayout, QWidget, QFrame, QTabWidget, QSlider, QTableWidget, QHeaderView)
+from custom_widgets import InteractiveImageViewer
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -81,14 +82,17 @@ class Ui_MainWindow(object):
         self.listWidget_images = QListWidget()
         self.left_layout.addWidget(self.listWidget_images)
         
-        self.btn_smart_probe = QPushButton(u"🌟 智能全自动融合")
-        self.btn_smart_probe.setObjectName(u"btn_smart_probe")
-        self.left_layout.addWidget(self.btn_smart_probe)
+        self.btn_start_street = QPushButton(u"🚗 水平街道/航拍全景（极清防重影）")
+        self.btn_start_street.setObjectName(u"btn_start_street")
+        self.btn_start_street.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; font-size: 13px; padding: 10px; border-radius: 4px;")
+        self.btn_start_street.setToolTip(u"提示：适合无人机航拍、街景外立面、长幅广告牌等远景拍摄。极清防重影。")
+        self.left_layout.addWidget(self.btn_start_street)
         
-        self.btn_start = QPushButton(u"开始拼接 (按右侧配置)")
-        self.btn_start.setObjectName(u"btn_start")
-        self.btn_start.setStyleSheet("background-color: #44bd32; font-size: 14px; padding: 10px;")
-        self.left_layout.addWidget(self.btn_start)
+        self.btn_start_desktop = QPushButton(u"🏠 室内/桌面近景（宽带防断层）")
+        self.btn_start_desktop.setObjectName(u"btn_start_desktop")
+        self.btn_start_desktop.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; font-size: 13px; padding: 10px; border-radius: 4px;")
+        self.btn_start_desktop.setToolTip(u"提示：适合桌面、室内房间、近距离带角度拍摄。宽带柔和过渡，防物体断裂。")
+        self.left_layout.addWidget(self.btn_start_desktop)
         
         self.btn_history = QPushButton(u"📜 历史档案库")
         self.btn_history.setObjectName(u"btn_history")
@@ -113,18 +117,9 @@ class Ui_MainWindow(object):
         self.label_preview_title.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")
         self.preview_layout.addWidget(self.label_preview_title)
         
-        # 建立一个通用的容器，稍后在 main_window 中装载 DualImageViewer 或普通 QLabel
-        self.preview_container = QWidget()
-        self.preview_container_layout = QVBoxLayout(self.preview_container)
-        self.preview_container_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.label_preview = QLabel(u"暂无全景图预览")
-        self.label_preview.setObjectName(u"label_preview")
-        self.label_preview.setAlignment(Qt.AlignCenter)
-        self.label_preview.setStyleSheet(u"border: 2px dashed #718093; border-radius: 6px; background-color: #1e272e; color: #a4b0be;")
-        
-        self.preview_container_layout.addWidget(self.label_preview)
-        self.preview_layout.addWidget(self.preview_container, 1)
+        # 交互式看图组件（替代静态 QLabel）
+        self.image_viewer = InteractiveImageViewer()
+        self.preview_layout.addWidget(self.image_viewer, 1)
         
         self.log_frame = QFrame(self.center_splitter)
         self.log_layout = QVBoxLayout(self.log_frame)

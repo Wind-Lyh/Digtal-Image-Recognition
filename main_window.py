@@ -15,7 +15,7 @@ import datetime
 
 from ui_main import Ui_MainWindow
 from feature_matcher import match_images_from_memory
-from test_my_data import run_stitching_pipeline, smart_topology_probe
+from test_my_data import run_stitching_pipeline, run_global_stitch_pipeline, smart_topology_probe
 from utils.image_io import crop_black_border, save_panorama
 from config_manager import get_config, set_config, save_config
 from history_window import HistoryWindow
@@ -36,11 +36,11 @@ class WorkerSignals(QObject):
     update_combo = Signal(str)
 
 class StitchWorker(QThread):
-    def __init__(self, img_paths: List[str], blend_mode: str, smart_probe: bool = False):
+    def __init__(self, img_paths: List[str], blend_mode: str, scene_mode: str = "street"):
         super().__init__()
         self.img_paths = img_paths
         self.blend_mode = blend_mode
-        self.smart_probe = smart_probe
+        self.scene_mode = scene_mode
         self.signals = WorkerSignals()
 
     def run(self):
@@ -51,40 +51,66 @@ class StitchWorker(QThread):
             
             imgs = []
             for path in self.img_paths:
-                img = cv2.imread(path)
+                # 使用 imdecode 完美兼容中文路径
+                img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if img is not None: imgs.append(img)
             
+            if len(imgs) == 1:
+                self.signals.log.emit("ℹ️ [提示] 仅检测到单张图片，已跳过特征匹配与拼接，直接输出原图。")
+                self.signals.progress.emit(100)
+                self.signals.log.emit("====== 拼接全部完成！ ======")
+                self.signals.result_img.emit(imgs[0])
+                self.signals.finished.emit(True, "Success")
+                return
+                
             if len(imgs) < 2:
-                raise ValueError("有效图像不足2张，拼接终止。")
+                raise ValueError("有效图像为空，拼接终止。")
 
-            panorama = imgs[0]
-            for i in range(1, len(imgs)):
-                next_img = imgs[i]
-                self.signals.log.emit(f"\n---> 正在将第 {i+1}/{len(imgs)} 张图拼入全景...")
-                
-                src_pts, dst_pts, kp1, kp2, good_matches = match_images_from_memory(panorama, next_img)
-                if good_matches is None:
-                    raise ValueError(f"第 {i+1} 张图与前一张图重叠度过低，特征点匹配过少，拼接终止！")
-                    
-                current_blend_mode = self.blend_mode
-                if self.smart_probe:
-                    self.signals.log.emit("🔍 [智能探针] 正在执行自适应检测...")
-                    direction_msg, force_multiband, exposure_diff = smart_topology_probe(
-                        panorama, next_img, src_pts, dst_pts, exposure_thresh=25
-                    )
-                    self.signals.log.emit(f"🔮 [智能探针] 自动识别空间布局：{direction_msg}")
-                    
-                    if force_multiband and current_blend_mode != "multiband":
-                        self.signals.log.emit(f"⚠️ [智能探针] 检测到重叠区曝光差异过大 (Diff={exposure_diff:.1f})！")
-                        self.signals.log.emit("⚠️ 系统已自动强制覆盖用户参数，启用 Multi-band 融合！")
-                        current_blend_mode = "multiband"
-                        self.signals.update_combo.emit("多频段融合 (Multi-band)")
-                
-                panorama = run_stitching_pipeline(
-                    panorama, next_img, src_pts, dst_pts, blend_mode=current_blend_mode
+            # --- 防坐标溢出：自适应安全缩放机制 ---
+            total_est_width = sum(img.shape[1] for img in imgs)
+            SAFE_WIDTH_LIMIT = 25000
+            if total_est_width > SAFE_WIDTH_LIMIT:
+                scale_factor = SAFE_WIDTH_LIMIT / total_est_width
+                self.signals.log.emit(f"⚠️ [安全警报] 预估拼接总宽度 ({total_est_width}px) 超过底层安全极限！")
+                self.signals.log.emit(f"🛡️ 已启动防溢出护盾：正以 {scale_factor:.3f}x 比例对原图进行自适应降采样保护...")
+                scaled_imgs = []
+                for img in imgs:
+                    scaled_imgs.append(cv2.resize(img, (0, 0), fx=scale_factor, fy=scale_factor))
+                imgs = scaled_imgs
+            # ----------------------------------
+
+            if self.scene_mode == "street":
+                gamma_y = 0.0
+                self.signals.log.emit("🚗 [双轨分流] 已启动【水平街道/航拍模式】")
+                self.signals.log.emit("📐 锁定 Y 轴偏移 (dy=0)，执行极窄带融合与 1px 微雕修复")
+            else:
+                gamma_y = 1.0
+                self.signals.log.emit("🏠 [双轨分流] 已启动【室内/桌面近景模式】")
+                self.signals.log.emit("📐 释放所有几何约束，执行宽带大面平滑融合与强效断层修复")
+
+            current_blend_mode = self.blend_mode
+            
+            # 曝光探测: 检查第一对图片来决定是否强制 multiband
+            src_pts, dst_pts, _, _, gm = match_images_from_memory(imgs[0], imgs[1])
+            if gm is not None:
+                _, force_multiband, exposure_diff, _ = smart_topology_probe(
+                    imgs[0], imgs[1], src_pts, dst_pts, exposure_thresh=25
                 )
-                prog = 10 + int((i / (len(imgs) - 1)) * 85)
-                self.signals.progress.emit(prog)
+                if force_multiband and current_blend_mode != "multiband":
+                    self.signals.log.emit(f"⚠️ [智能探针] 检测到曝光差异过大 (Diff={exposure_diff:.1f})，强制启用 Multi-band！")
+                    current_blend_mode = "multiband"
+                    self.signals.update_combo.emit("多频段融合 (Multi-band)")
+            
+            self.signals.progress.emit(10)
+            self.signals.log.emit(f"\n🚀 启动全局两遍扫描拼接管线 (Global Two-Pass Pipeline)...")
+            
+            panorama = run_global_stitch_pipeline(
+                imgs,
+                match_func=match_images_from_memory,
+                blend_mode=current_blend_mode,
+                gamma_y=gamma_y,
+                log_func=lambda msg: self.signals.log.emit(msg)
+            )
             
             self.signals.progress.emit(100)
             self.signals.log.emit("====== 拼接全部完成！ ======")
@@ -153,8 +179,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         history_item = self.history_cache[idx]
         self.is_history_mode = True
         self.label_preview_title.setText("全景拼接预览区域 [⏳ 历史回看模式]")
-        self.btn_smart_probe.setEnabled(False)
-        self.btn_start.setEnabled(False)
+        self.btn_start_street.setEnabled(False)
+        self.btn_start_desktop.setEnabled(False)
         
         self.textEdit_log.setPlainText(history_item.get("log", ""))
         self.textEdit_log.verticalScrollBar().setValue(self.textEdit_log.verticalScrollBar().maximum())
@@ -173,8 +199,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.btn_select_images.clicked.connect(self.select_images)
         self.btn_select_folder.clicked.connect(self.select_folder)
         self.btn_clear.clicked.connect(self.clear_images)
-        self.btn_smart_probe.clicked.connect(self.start_smart_stitching)
-        self.btn_start.clicked.connect(self.start_manual_stitching)
+        self.btn_start_street.clicked.connect(self.start_street_stitching)
+        self.btn_start_desktop.clicked.connect(self.start_desktop_stitching)
         self.btn_history.clicked.connect(self.open_history_window)
         
         self.combo_blend_mode.currentTextChanged.connect(self._on_config_changed)
@@ -207,8 +233,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.is_history_mode:
             self.is_history_mode = False
             self.label_preview_title.setText("全景拼接预览区域")
-            self.btn_smart_probe.setEnabled(True)
-            self.btn_start.setEnabled(True)
+            self.btn_start_street.setEnabled(True)
+            self.btn_start_desktop.setEnabled(True)
             self.append_log("\n====== 已退出历史回看模式，恢复拼接功能 ======")
 
     def on_btn_compare_clicked(self):
@@ -228,12 +254,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for path in self.img_paths:
             self.listWidget_images.addItem(os.path.basename(path))
 
+    def _natural_sort_key(self, s):
+        import re
+        return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+
     def select_images(self):
         self._exit_history_mode_if_needed()
         paths, _ = QFileDialog.getOpenFileNames(
             self, "选择待拼接图片", "", "Images (*.png *.jpg *.jpeg *.bmp)"
         )
         if paths:
+            # 必须使用自然排序，防止 10.jpg 排在 2.jpg 前面
+            paths.sort(key=self._natural_sort_key)
             for p in paths:
                 if p not in self.img_paths:
                     self.img_paths.append(p)
@@ -245,7 +277,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if folder:
             valid_exts = ('.png', '.jpg', '.jpeg', '.bmp')
             new_paths = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(valid_exts)]
-            new_paths.sort()
+            new_paths.sort(key=self._natural_sort_key)
             for p in new_paths:
                 if p not in self.img_paths:
                     self.img_paths.append(p)
@@ -255,8 +287,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._exit_history_mode_if_needed()
         self.img_paths.clear()
         self.update_list_ui()
-        self.label_preview.clear()
-        self.label_preview.setText("暂无全景图预览")
+        self.image_viewer.clear_image()
         self.progressBar.setValue(0)
         self.append_log("任务列表与预览已清空。")
 
@@ -274,7 +305,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.append_log("历史记录已清空。")
 
     def set_ui_enabled(self, enabled: bool):
-        widgets = ['btn_select_images', 'btn_select_folder', 'btn_clear', 'btn_smart_probe', 'btn_start', 'combo_blend_mode', 'slider_orb', 'slider_ransac', 'slider_quality', 'btn_clear_history']
+        widgets = ['btn_select_images', 'btn_select_folder', 'btn_clear', 'btn_start_street', 'btn_start_desktop', 'combo_blend_mode', 'slider_orb', 'slider_ransac', 'slider_quality', 'btn_clear_history']
         for w_name in widgets:
             if hasattr(self, w_name):
                 getattr(self, w_name).setEnabled(enabled)
@@ -284,23 +315,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if idx >= 0:
             self.combo_blend_mode.setCurrentIndex(idx)
 
-    def start_smart_stitching(self):
-        self._trigger_stitching(blend_mode=get_config("blend_mode", "linear"), smart_probe=True)
+    def start_street_stitching(self):
+        self._trigger_stitching(blend_mode=get_config("blend_mode", "linear"), scene_mode="street")
         
-    def start_manual_stitching(self):
-        self._trigger_stitching(blend_mode=get_config("blend_mode", "linear"), smart_probe=False)
+    def start_desktop_stitching(self):
+        self._trigger_stitching(blend_mode=get_config("blend_mode", "linear"), scene_mode="desktop")
 
-    def _trigger_stitching(self, blend_mode: str, smart_probe: bool):
-        if len(self.img_paths) < 2:
-            QMessageBox.warning(self, "温馨提示", "请至少选择两张图片！")
+    def _trigger_stitching(self, blend_mode: str, scene_mode: str):
+        if len(self.img_paths) < 1:
+            QMessageBox.warning(self, "温馨提示", "请至少选择一张图片！")
             return
             
         self.current_start_time = time.time()
-        self.append_log(f"\n-> 准备启动后台线程，模式={blend_mode}，智能探针={smart_probe}...")
+        self.append_log(f"\n-> 准备启动后台线程，模式={blend_mode}，场景={scene_mode}...")
         self.set_ui_enabled(False)
         self.progressBar.setValue(0)
             
-        self.worker = StitchWorker(self.img_paths, blend_mode, smart_probe=smart_probe)
+        self.worker = StitchWorker(self.img_paths, blend_mode, scene_mode=scene_mode)
         self.worker.signals.progress.connect(self.progressBar.setValue)
         self.worker.signals.log.connect(self.append_log)
         self.worker.signals.result_img.connect(self.show_result_image)
@@ -309,19 +340,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.worker.start()
 
     def show_result_image(self, img_bgr: np.ndarray, is_history: bool = False):
-        if not hasattr(self, 'label_preview'): return
         if not is_history: self._current_result_bgr = img_bgr.copy()
-            
         try:
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            h, w, ch = img_rgb.shape
-            bytes_per_line = ch * w
-            q_img = QImage(img_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            pixmap = QPixmap.fromImage(q_img)
-            
-            label_size = self.label_preview.size()
-            scaled_pixmap = pixmap.scaled(label_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.label_preview.setPixmap(scaled_pixmap)
+            self.image_viewer.set_image_from_bgr(img_bgr)
         except Exception as e:
             self.append_log(f"[UI 渲染错误] 无法渲染最终图像: {e}")
 

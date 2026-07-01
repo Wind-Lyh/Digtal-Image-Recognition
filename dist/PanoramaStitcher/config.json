@@ -1,0 +1,6 @@
+{
+    "blend_mode": "linear",
+    "orb_features": 3000,
+    "ransac_thresh": 5.0,
+    "jpeg_quality": 95
+}

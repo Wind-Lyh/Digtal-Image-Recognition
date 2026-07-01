@@ -2,8 +2,16 @@ import json
 import os
 import uuid
 
-HISTORY_FILE = "history.json"
-HISTORY_IMG_DIR = os.path.join("output", "history_images")
+import sys
+
+def get_app_root():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+HISTORY_FILE = os.path.join(get_app_root(), "history.json")
+HISTORY_IMG_DIR = os.path.join(get_app_root(), "output", "history_images")
 
 def init_env():
     if not os.path.exists(HISTORY_IMG_DIR):

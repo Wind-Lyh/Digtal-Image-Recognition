@@ -1,7 +1,15 @@
 import json
 import os
 
-CONFIG_FILE = "config.json"
+import sys
+
+def get_app_root():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE = os.path.join(get_app_root(), "config.json")
 
 GLOBAL_CONFIG = {
     "blend_mode": "linear",
@@ -19,6 +27,11 @@ def load_config():
                 GLOBAL_CONFIG.update(saved)
         except Exception as e:
             print(f"Failed to load config: {e}")
+            # 强行用内存默认值覆盖写入，修复文件损坏
+            save_config()
+    else:
+        # 自动补全创建标准的默认 config.json
+        save_config()
 
 def save_config():
     try:

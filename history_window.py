@@ -60,7 +60,7 @@ class ComparisonDialog(QDialog):
         valid_imgs = []
         for p in img_paths:
             if os.path.exists(p):
-                img = cv2.imread(p)
+                img = cv2.imdecode(np.fromfile(p, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if img is not None:
                     valid_imgs.append(img)
                     
@@ -77,6 +77,7 @@ class ComparisonDialog(QDialog):
                 
             strip_bgr = cv2.hconcat(resized_imgs)
             strip_rgb = cv2.cvtColor(strip_bgr, cv2.COLOR_BGR2RGB)
+            strip_rgb = np.ascontiguousarray(strip_rgb)
             h, w, ch = strip_rgb.shape
             q_img = QImage(strip_rgb.data, w, h, ch * w, QImage.Format_RGB888)
             self.view_before.set_image(QPixmap.fromImage(q_img))
@@ -133,21 +134,22 @@ class HistoryWindow(QDialog):
 
     def populate_table(self):
         self.table.setRowCount(0)
-        for i, item in enumerate(self.history_cache):
-            row = self.table.rowCount()
-            self.table.insertRow(row)
+        # 递减顺序：最新的记录排在最上面
+        for row_idx, i in enumerate(range(len(self.history_cache) - 1, -1, -1)):
+            item = self.history_cache[i]
+            self.table.insertRow(row_idx)
             
-            self.table.setItem(row, 0, QTableWidgetItem(f"Task #{i+1}"))
-            self.table.setItem(row, 1, QTableWidgetItem(item.get('timestamp', '')))
-            self.table.setItem(row, 2, QTableWidgetItem(str(item.get('num_imgs', 0))))
-            self.table.setItem(row, 3, QTableWidgetItem(str(item.get('duration', 0))))
-            self.table.setItem(row, 4, QTableWidgetItem(item.get('blend_mode', '未知')))
+            self.table.setItem(row_idx, 0, QTableWidgetItem(f"Task #{i+1}"))
+            self.table.setItem(row_idx, 1, QTableWidgetItem(item.get('timestamp', '')))
+            self.table.setItem(row_idx, 2, QTableWidgetItem(str(item.get('num_imgs', 0))))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(str(item.get('duration', 0))))
+            self.table.setItem(row_idx, 4, QTableWidgetItem(item.get('blend_mode', '未知')))
             status_text = "✅ 成功" if item.get('status') == 'success' else "❌ 失败"
-            self.table.setItem(row, 5, QTableWidgetItem(status_text))
-            self.table.setItem(row, 6, QTableWidgetItem(item.get('note', '')))
+            self.table.setItem(row_idx, 5, QTableWidgetItem(status_text))
+            self.table.setItem(row_idx, 6, QTableWidgetItem(item.get('note', '')))
             
-            # Store idx in the first column item for easy access
-            self.table.item(row, 0).setData(Qt.UserRole, i)
+            # 存储原始索引，确保预览/编辑/对比功能正确映射
+            self.table.item(row_idx, 0).setData(Qt.UserRole, i)
 
     def on_selection_changed(self):
         selected = self.table.selectedItems()
