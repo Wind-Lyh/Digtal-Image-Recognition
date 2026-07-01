@@ -19,6 +19,39 @@ class ORBFeatureExtractor:
         kp, des = self.orb.detectAndCompute(gray_img, None)
         return kp, des
 
+def match_images_from_memory(img1: np.ndarray, img2: np.ndarray):
+    """
+    针对内存图像的匹配函数
+    """
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray1 = cv2.equalizeHist(gray1)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.equalizeHist(gray2)
+    
+    # 2. 提取ORB特征
+    extractor = ORBFeatureExtractor(n_features=1500)
+    kp1, des1 = extractor.detect_and_compute(gray1)
+    kp2, des2 = extractor.detect_and_compute(gray2)
+    
+    # 3. 特征匹配（BFMatcher + KNN + Lowe's ratio test）
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.knnMatch(des1, des2, k=2)
+    
+    # 4. 筛选优质匹配点（ratio test < 0.75）
+    good_matches = []
+    for m, n in matches:
+        if m.distance < 0.75 * n.distance:
+            good_matches.append(m)
+            
+    # 5. 提取坐标数组
+    if len(good_matches) < 4:
+        return None, None, None, None, None
+        
+    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 2)
+    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 2)
+    
+    return src_pts, dst_pts, kp1, kp2, good_matches
+
 def match_two_images(img1_path, img2_path):
     """
     开发者A的核心匹配函数
@@ -30,32 +63,14 @@ def match_two_images(img1_path, img2_path):
     img2, gray2 = load_and_preprocess(img2_path)
     print(f"图1尺寸: {gray1.shape}, 图2尺寸: {gray2.shape}")
     
-    # 2. 提取ORB特征
-    extractor = ORBFeatureExtractor(n_features=1500)
-    kp1, des1 = extractor.detect_and_compute(gray1)
-    kp2, des2 = extractor.detect_and_compute(gray2)
-    print(f"图1特征点: {len(kp1)}, 图2特征点: {len(kp2)}")
+    src_pts, dst_pts, kp1, kp2, good_matches = match_images_from_memory(img1, img2)
     
-    # 3. 特征匹配（BFMatcher + KNN + Lowe's ratio test）
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
-    matches = bf.knnMatch(des1, des2, k=2)
-    
-    # 4. 筛选优质匹配点（ratio test < 0.75）
-    good_matches = []
-    for m, n in matches:
-        if m.distance < 0.75 * n.distance:
-            good_matches.append(m)
-    
-    print(f"[OK] 优质匹配点数量: {len(good_matches)}")
-    
-    # 5. 提取坐标数组（重点：这是给开发者B的数据）
-    if len(good_matches) < 4:
+    if good_matches is not None:
+        print(f"图1特征点: {len(kp1)}, 图2特征点: {len(kp2)}")
+        print(f"[OK] 优质匹配点数量: {len(good_matches)}")
+    else:
         print("[WARN] 匹配点太少，无法计算单应矩阵！")
-        return None, None, None, None, None
-    
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 2)
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 2)
-    
+        
     return src_pts, dst_pts, kp1, kp2, good_matches
 
 if __name__ == "__main__":

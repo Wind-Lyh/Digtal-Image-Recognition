@@ -13,12 +13,10 @@ from PySide6.QtGui import QImage, QPixmap
 # 导入 Qt Designer 生成的 UI 文件（请确保其命名为 ui_main.py 且类名为 Ui_MainWindow）
 from ui_main import Ui_MainWindow
 
-# 引入核心算法层
-from core.homography_estimator import HomographyEstimator, HomographyEstimationError, InsufficientPointsError
-from core.image_warper import ImageWarper
-from core.image_blender import ImageBlender
+# 引入开发者A的核心算法
+from feature_matcher import match_images_from_memory
+from test_my_data import run_stitching_pipeline
 from utils.image_io import crop_black_border, save_panorama
-from feature_matcher import ORBFeatureExtractor
 
 
 class EmittingStream(QObject):
@@ -77,84 +75,40 @@ class StitchWorker(QThread):
 
             self.signals.progress.emit(10)
 
-            # 2. 向心拼接管道 (以中心图片为锚点，向两端扩展)
-            # 自动计算锚点索引
-            N = len(imgs)
-            anchor_idx = N // 2
-            self.signals.log.emit(f"采用向心拼接逻辑，自动选中中心图 (索引 {anchor_idx}) 作为锚点")
+            # 2. 级联拼接管道 (调用 A 的算法作为唯一引擎)
+            self.signals.log.emit("开始使用 A 引擎进行线性级联拼接...")
             
-            result = imgs[anchor_idx]
+            panorama = imgs[0]
             
-            # 内部辅助函数：执行单次向心拼接
-            def stitch_single(ref_img, warp_img, step_desc, step_progress):
-                self.signals.log.emit(f"\n---> {step_desc}...")
+            for i in range(1, len(imgs)):
+                next_img = imgs[i]
+                self.signals.log.emit(f"\n---> 正在将第 {i+1}/{len(imgs)} 张图拼入全景...")
                 
-                # ORB 提取
-                self.signals.log.emit("提取 ORB 特征...")
-                extractor = ORBFeatureExtractor(n_features=2000)
-                gray_ref = cv2.cvtColor(ref_img, cv2.COLOR_BGR2GRAY)
-                gray_warp = cv2.cvtColor(warp_img, cv2.COLOR_BGR2GRAY)
-                kp1, des1 = extractor.detect_and_compute(gray_ref)
-                kp2, des2 = extractor.detect_and_compute(gray_warp)
-                self.signals.log.emit(f"检测到特征点：基准图={len(kp1)}，新图={len(kp2)}")
+                # 步骤 A：内存提取特征与匹配
+                self.signals.log.emit("提取特征点并进行匹配...")
+                src_pts, dst_pts, kp1, kp2, good_matches = match_images_from_memory(panorama, next_img)
                 
-                # BFMatcher 匹配
-                self.signals.log.emit("进行特征匹配 (BFMatcher + KNN)...")
-                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
-                matches = bf.knnMatch(des1, des2, k=2)
+                if good_matches is None:
+                    raise ValueError(f"第 {i+1} 张图与前一张图重叠度过低，特征点匹配过少，拼接被强制终止！")
+                    
+                self.signals.log.emit(f"成功提取优质匹配点对: {len(good_matches)}")
                 
-                # Lowe's ratio test 过滤
-                good_matches = []
-                for m, n in matches:
-                    if m.distance < 0.75 * n.distance:
-                        good_matches.append(m)
+                # 步骤 B：调用 A 引擎核心流水线
+                self.signals.log.emit(f"调用核心引擎流水线 (融合模式: {self.blend_mode})...")
                 
-                self.signals.log.emit(f"优质匹配点数量: {len(good_matches)}")
-                if len(good_matches) < 10:
-                    raise ValueError(f"优质匹配点数量不足 ({len(good_matches)} < 10)，无法计算单应矩阵！")
+                panorama = run_stitching_pipeline(
+                    panorama, 
+                    next_img, 
+                    src_pts, 
+                    dst_pts, 
+                    blend_mode=self.blend_mode
+                )
                 
-                # 提取坐标 (修正了原先映射错误的 Bug)
-                # kp2 是待扭曲的新图，kp1 是基准主视图
-                # 计算从 warp_img 到 ref_img 的单应矩阵
-                src_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 2)
-                dst_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 2)
-                
-                # 单应矩阵计算
-                self.signals.log.emit("计算单应矩阵 (RANSAC)...")
-                H, mask = HomographyEstimator.compute(src_pts, dst_pts)
-                inliers = np.sum(mask)
-                self.signals.log.emit(f"单应矩阵计算成功！RANSAC 内点数量: {inliers}")
-                
-                self.signals.progress.emit(step_progress)
-                
-                # 透视投影变换
-                self.signals.log.emit("执行透视投影变换并扩展画布...")
-                canvas_width, canvas_height, dx, dy = ImageWarper.get_canvas_size([ref_img, warp_img], [np.eye(3), H])
-                warped_ref = ImageWarper.warp_image(ref_img, np.eye(3), canvas_width, canvas_height, dx, dy)
-                warped_warp = ImageWarper.warp_image(warp_img, H, canvas_width, canvas_height, dx, dy)
-                
-                # 图像融合
-                self.signals.log.emit(f"开始图像融合，应用 {self.blend_mode} 算法...")
-                return ImageBlender.blend(warped_ref, warped_warp, mode=self.blend_mode)
-
-            # --- 右侧扩展 (向右拼接) ---
-            for i in range(anchor_idx + 1, N):
-                desc = f"正在将右侧第 {i} 张图向中心锚点图合并"
-                prog = 10 + int(((i - anchor_idx) / N) * 70)
-                result = stitch_single(result, imgs[i], desc, prog)
-                
-            # --- 左侧扩展 (向左拼接) ---
-            for i in range(anchor_idx - 1, -1, -1):
-                desc = f"正在将左侧第 {i} 张图向中心锚点图合并"
-                prog = 10 + int(((anchor_idx - i + (N - anchor_idx - 1)) / N) * 70)
-                result = stitch_single(result, imgs[i], desc, prog)
-                
-            self.signals.progress.emit(85)
+                # 更新进度
+                prog = 10 + int((i / (len(imgs) - 1)) * 85)
+                self.signals.progress.emit(prog)
             
-            # 3. 结果后处理 (裁剪黑边)
-            self.signals.log.emit("正在自动裁剪纯黑边...")
-            final_img = crop_black_border(result)
-            self.signals.progress.emit(95)
+            final_img = panorama
             
             # 保存本地
             BASE_DIR = os.path.dirname(os.path.abspath(__file__))
