@@ -3,10 +3,46 @@
 
 a = Analysis(
     ['main_window.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
-    datas=[],
-    hiddenimports=['cv2'],
+    datas=[
+        ('ui_main.py', '.'),
+        ('feature_matcher.py', '.'),
+        ('test_my_data.py', '.'),
+        ('config_manager.py', '.'),
+        ('config.json', '.'),
+        ('history_manager.py', '.'),
+        ('history_window.py', '.'),
+        ('history.json', '.'),
+        ('utils/image_io.py', 'utils'),
+        ('core/__init__.py', 'core'),
+        ('core/homography_estimator.py', 'core'),
+        ('core/image_warper.py', 'core'),
+        ('core/image_blender.py', 'core'),
+        ('shared_types.py', '.'),
+        ('config.py', '.'),
+    ],
+    hiddenimports=[
+        'cv2',
+        'cv2.detail',
+        'numpy',
+        'numpy.core',
+        'numpy.core.multiarray',
+        'numpy.lib',
+        'json',
+        'os',
+        'sys',
+        'io',
+        'time',
+        'uuid',
+        'typing',
+        'datetime',
+        're',
+        'PySide6',
+        'PySide6.QtWidgets',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -14,6 +50,7 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -21,11 +58,11 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='main_window',
+    name='PanoramaStitcher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -33,12 +70,13 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+
 coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
-    name='main_window',
+    name='PanoramaStitcher',
 )

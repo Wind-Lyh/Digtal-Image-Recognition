@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -226,8 +227,14 @@ class StitchGUI:
             self.progress_label.config(text="计算单应矩阵...")
             panorama = stitch_images(img1, img2, src_pts, dst_pts)
 
-            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-            output_path = os.path.join(BASE_DIR, "output", "my_panorama.jpg")
+            if getattr(sys, 'frozen', False):
+                BASE_DIR = os.path.dirname(sys.executable)
+            else:
+                BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+            output_dir = os.path.join(BASE_DIR, "output")
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            output_path = os.path.join(output_dir, "my_panorama.jpg")
             cv2.imwrite(output_path, panorama)
 
             self.progress_label.config(text=f"拼接完成! 尺寸: {panorama.shape[1]}x{panorama.shape[0]}")

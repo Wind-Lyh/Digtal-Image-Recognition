@@ -22,26 +22,27 @@ def main():
     # 采用 PowerShell 方案以脱离对 Windows SDK (signtool.exe) 的强依赖
     ps_script = f"""
     $ErrorActionPreference = 'Stop'
-    
+
+    Write-Host "[1/5] 正在生成 Lyh_Software 代码签名证书..."
     Write-Host "[1/3] 正在生成 Lyh_Software 代码签名证书..."
-    $cert = New-SelfSignedCertificate -Subject "CN=Lyh_Software" -Type CodeSigningCert -CertStoreLocation "Cert:\\CurrentUser\\My"
-    
+    $cert = New-SelfSignedCertificate -Subject "CN=Lyh_Software" -Type CodeSigningCert -CertStoreLocation "Cert:\\CurrentUser\\My" -NotAfter (Get-Date).AddYears(5)
+
     Write-Host "[2/3] 正在导出证书备份 ( Lyh_Software.pfx )..."
     $pwd = ConvertTo-SecureString -String "123456" -Force -AsPlainText
     Export-PfxCertificate -Cert $cert -FilePath "{pfx_path}" -Password $pwd | Out-Null
-    
-    Write-Host "[3/3] 正在将证书强行注入到 EXE 中..."
-    $signResult = Set-AuthenticodeSignature -FilePath "{exe_path}" -Certificate $cert
-    
+
+    Write-Host "[3/3] 正在将证书签名注入到 EXE 中..."
+    $signResult = Set-AuthenticodeSignature -FilePath "{exe_path}" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+
     Write-Host "==========================="
     Write-Host "验证签名状态:"
     if ($signResult.Status -eq 'Valid') {{
-        Write-Host "✅ 签名成功！状态: Valid" -ForegroundColor Green
+        Write-Host "[OK] 签名成功！状态: Valid" -ForegroundColor Green
     }} else {{
-        Write-Host "❌ 签名未通过校验！状态: $($signResult.Status)" -ForegroundColor Red
+        Write-Host "[FAIL] 签名未通过校验！状态: $($signResult.Status)" -ForegroundColor Red
         Write-Host "详细信息: $($signResult.StatusMessage)" -ForegroundColor Red
     }}
-    
+
     Write-Host "==========================="
     Write-Host "如需手动进行标准验证，请在 PowerShell 中执行以下命令:"
     Write-Host "Get-AuthenticodeSignature -FilePath '{exe_path}'"

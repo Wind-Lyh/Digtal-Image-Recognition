@@ -1,11 +1,11 @@
 [
     {
-        "timestamp": "2026-07-02 01:03:48",
+        "timestamp": "2026-07-02 10:28:13",
         "num_imgs": 9,
         "duration": 3.4,
         "blend_mode": "linear",
         "status": "success",
-        "image_path": "C:\\Users\\Lyh\\Desktop\\Files\\Git\\Digtal-Image-Recognition\\dist\\PanoramaStitcher\\output\\history_images\\pano_41a62d39.jpg",
+        "image_path": "C:\\Users\\Lyh\\Desktop\\Files\\Git\\Digtal-Image-Recognition\\dist\\PanoramaStitcher\\output\\history_images\\pano_46df456d.jpg",
         "img_paths": [
             "C:/Users/Lyh/Desktop/Files/Git/Digtal-Image-Recognition/images/photos/image_0001.jpg",
             "C:/Users/Lyh/Desktop/Files/Git/Digtal-Image-Recognition/images/photos/image_0002.jpg",

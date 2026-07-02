@@ -1,0 +1,68 @@
+﻿python.exe : 112 INFO: PyInstaller: 6.21.0, contrib hooks: 2026.6
+所在位置 行:1 字符: 191
++ ... lyContinue; & "E:\Python\python.exe" -m PyInstaller main_window.spec  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (112 INFO: PyIns...b hooks: 2026.6 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+113 INFO: Python: 3.14.0
+136 INFO: Platform: Windows-11-10.0.26200-SP0
+136 INFO: Python environment: E:\Python
+138 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\Lyh\\Desktop\\Files\\Git\\Digtal-Image-Recognition',
+ 'E:\\Python\\python314.zip',
+ 'E:\\Python\\DLLs',
+ 'E:\\Python\\Lib',
+ 'E:\\Python',
+ 'E:\\Python\\Lib\\site-packages',
+ 'C:\\Users\\Lyh\\Desktop\\Files\\Git\\Digtal-Image-Recognition']
+379 INFO: Appending 'datas' from .spec
+380 INFO: checking Analysis
+380 INFO: Building Analysis because Analysis-00.toc is non existent
+380 INFO: Looking for Python shared library...
+380 INFO: Using Python shared library: E:\Python\python314.dll
+380 INFO: Running Analysis Analysis-00.toc
+380 INFO: Target bytecode optimization level: 0
+380 INFO: Initializing module dependency graph...
+380 INFO: Initializing module graph hook caches...
+389 INFO: Analyzing modules for base_library.zip ...
+1581 INFO: Processing standard module hook 'hook-encodings.py' from 'E:\\Python
+\\Lib\\site-packages\\PyInstaller\\hooks'
+1918 INFO: Processing standard module hook 'hook-math.py' from 'E:\\Python\\Lib
+\\site-packages\\PyInstaller\\hooks'
+3423 INFO: Processing standard module hook 'hook-difflib.py' from 'E:\\Python\\
+Lib\\site-packages\\PyInstaller\\hooks'
+3436 INFO: Processing standard module hook 'hook-heapq.py' from 'E:\\Python\\Li
+b\\site-packages\\PyInstaller\\hooks'
+3554 INFO: Processing standard module hook 'hook-pickle.py' from 'E:\\Python\\L
+ib\\site-packages\\PyInstaller\\hooks'
+4860 INFO: Caching module dependency graph...
+4884 INFO: Analyzing C:\Users\Lyh\Desktop\Files\Git\Digtal-Image-Recognition\ma
+in_window.py
+4957 INFO: Processing standard module hook 'hook-platform.py' from 'E:\\Python\
+\Lib\\site-packages\\PyInstaller\\hooks'
+4978 INFO: Processing standard module hook 'hook-_ctypes.py' from 'E:\\Python\\
+Lib\\site-packages\\PyInstaller\\hooks'
+4991 INFO: Processing standard module hook 'hook-cv2.py' from 'E:\\Python\\Lib\
+\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+5298 INFO: Processing standard module hook 'hook-numpy.py' from 'E:\\Python\\Li
+b\\site-packages\\PyInstaller\\hooks'
+5593 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' f
+rom 'E:\\Python\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module
+'
+5594 INFO: SetuptoolsInfo: initializing cached setuptools info...
+6322 INFO: Processing standard module hook 'hook-sysconfig.py' from 'E:\\Python
+\\Lib\\site-packages\\PyInstaller\\hooks'
+6817 INFO: Processing standard module hook 'hook-webbrowser.py' from 'E:\\Pytho
+n\\Lib\\site-packages\\PyInstaller\\hooks'
+7954 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 
+'E:\\Python\\Lib\\site-packages\\PyInstaller\\hooks'
+8044 INFO: Processing standard module hook 'hook-xml.py' from 'E:\\Python\\Lib\
+\site-packages\\PyInstaller\\hooks'
+9801 INFO: Processing standard module hook 'hook-PySide6.py' from 'E:\\Python\\
+Lib\\site-packages\\PyInstaller\\hooks'
+9926 INFO: Processing standard module hook 'hook-shiboken6.py' from 'E:\\Python
+\\Lib\\site-packages\\PyInstaller\\hooks'
+10207 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'E
+:\\Python\\Lib\\site-packages\\PyInstaller\\hooks'
